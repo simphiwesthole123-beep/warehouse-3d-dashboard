@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Warehouse Live Data Dashboard</title>
+    <style>
+        body, html { 
+            margin: 0; 
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; 
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #webgl-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        .instruction-banner {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.85);
+            color: #cbd5e1;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 10;
+            pointer-events: none;
+            backdrop-filter: blur(6px);
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- GLTFLoader CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- OrbitControls CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <!-- Instruction Banner -->
+    <div class="instruction-banner">Click any asset in the 3D warehouse to inspect</div>
+
+    <!-- Container for 3D Viewport -->
+    <div id="webgl-container"></div>
+
+    <script>
+        // Complete database loaded from Logs.csv
+        const warehouseData = [
+            { Machine: "Inbound Holding Conveyor", JobCard: "675 4gyug", Description: "Proximity switch M8", Location: "Storage Unit B", Quantity: "1,00", Condition: "14.0", Comment: "Dead Spade" },
+            { Machine: "Bay Holding Conveyor", JobCard: "798454", Description: "SIMATIC ET 200SP, DIGITAL INPUT MODULE, DI 8X 24VDC STANDARD", Location: "Storage Unit B", Quantity: "12,00", Condition: "85.0", Comment: "Broken Conveyor Belt" },
+            { Machine: "Line Belt Conveyor", JobCard: "798454", Description: "SIMATIC DP, ELECTRON. MODULE F. ET 200SP, F-DI 8X24VDC HF", Location: "Storage Unit B", Quantity: "1,00", Condition: "65.0", Comment: "Standard Operation" },
+            { Machine: "Re-Route Conveyor", JobCard: "N/A", Description: "Diverter Roller Assembly", Location: "Storage Unit A", Quantity: "2,00", Condition: "72.0", Comment: "Routine Check" },
+            { Machine: "Scanner", JobCard: "1555", Description: "Barcode Laser Scanner Module", Location: "Control Room", Quantity: "1,00", Condition: "90.0", Comment: "Optimal" },
+            { Machine: "Scanner Conveyor", JobCard: "7985", Description: "Drive Motor Belt", Location: "Bay Area", Quantity: "1,00", Condition: "45.0", Comment: "Wear & Tear" },
+            { Machine: "Powerfashion Sorter Conveyor", JobCard: "N/A", Description: "Sorter Belt Unit", Location: "Sorting Zone", Quantity: "1,00", Condition: "89.0", Comment: "Normal" },
+            { Machine: "Inbound Sorter Conveyor", JobCard: "N/A", Description: "Inbound Roller Line", Location: "Receiving", Quantity: "1,00", Condition: "90.0", Comment: "Normal" },
+            { Machine: "Bay1 Inbound Conveyor", JobCard: "N/A", Description: "Bay 1 Feed Line", Location: "Bay 1", Quantity: "1,00", Condition: "15.0", Comment: "Check Roller" },
+            { Machine: "Bay2 Inbound Conveyor", JobCard: "N/A", Description: "Bay 2 Feed Line", Location: "Bay 2", Quantity: "1,00", Condition: "25.0", Comment: "Check Roller" },
+            { Machine: "Volumizer 1", JobCard: "N/A", Description: "Volumizer Unit 1", Location: "Main Floor", Quantity: "1,00", Condition: "30.0", Comment: "Operational" },
+            { Machine: "Volumizer 2", JobCard: "N/A", Description: "Volumizer Unit 2", Location: "Main Floor", Quantity: "1,00", Condition: "20.0", Comment: "Operational" }
+        ];
+
+        // 1. Setup Scene, Camera, and Renderer
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f172a);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // 2. Add Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(10, 30, 20);
+        scene.add(directionalLight);
+
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        backLight.position.set(-10, -20, -15);
+        scene.add(backLight);
+
+        let warehouseModel = null;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // 3. Load the GLB File
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+            'Warehouse.glb',
+            function (gltf) {
+                warehouseModel = gltf.scene;
+                scene.add(warehouseModel);
+                
+                const box = new THREE.Box3().setFromObject(warehouseModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                
+                const maxDim = Math.max(size.x, size.y, size.z);
+                camera.position.set(center.x, center.y + maxDim * 0.6, center.z + maxDim * 1.2);
+                controls.target.copy(center);
+                controls.update();
+            },
+            undefined,
+            function (error) {
+                console.log('Error loading GLB:', error);
+            }
+        );
+
+        // 4. Click Interaction with Deep Ancestor Chain Scanning & Console Debugging
+        window.addEventListener('click', onPointerDown, false);
+
+        function onPointerDown(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            if (!warehouseModel) return;
+
+            const intersects = raycaster.intersectObjects(warehouseModel.children, true);
+
+            if (intersects.length > 0) {
+                const hitObject = intersects[0].object;
+                
+                let namesInChain = [];
+                let curr = hitObject;
+                while (curr && curr !== scene) {
+                    if (curr.name && curr.name.trim() !== '') {
+                        namesInChain.push(curr.name);
+                    }
+                    curr = curr.parent;
+                }
+
+                console.log("=== Clicked Node Chain ===", namesInChain);
+
+                let matchedRecord = null;
+                let resolvedName = "Unknown Asset";
+
+                for (let name of namesInChain) {
+                    let cleanName = name.replace(/_\d+$/, '').trim();
+
+                    matchedRecord = warehouseData.find(d => 
+                        cleanName.toLowerCase() === d.Machine.toLowerCase() ||
+                        cleanName.toLowerCase().includes(d.Machine.toLowerCase()) || 
+                        d.Machine.toLowerCase().includes(cleanName.toLowerCase())
+                    );
+
+                    if (matchedRecord) {
+                        resolvedName = matchedRecord.Machine;
+                        break;
+                    }
+                }
+
+                if (!matchedRecord) {
+                    const fallbackName = namesInChain.reverse().find(n => 
+                        !n.startsWith('Assembly') && !n.startsWith('Geom') && !n.startsWith('mesh') && !n.includes('roller')
+                    ) || namesInChain[0] || "Standard Asset";
+
+                    resolvedName = fallbackName.replace(/_\d+$/, '').trim();
+                }
+
+                console.log("Resolved Machine Name for Power BI Link:", resolvedName);
+            }
+        }
+
+        // Handle window resizing
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 5. Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
