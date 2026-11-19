@@ -83,6 +83,8 @@
         const renderer = new THREE.WebGLRenderer({ antialias: true });
 
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 0.85;
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -94,26 +96,26 @@
         const desiredCameraPos = new THREE.Vector3();
         const desiredTargetPos = new THREE.Vector3();
 
-        // Stop auto-zoom if the user manually grabs/drags the camera
         controls.addEventListener('start', () => {
             isTransitioningCamera = false;
         });
 
-        // 2. Add Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+        // 2. Balanced Lighting (prevents harsh white specular wash on the floor)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
         scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.55);
         directionalLight.position.set(10, 30, 20);
         scene.add(directionalLight);
 
-        const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
         backLight.position.set(-10, -20, -15);
         scene.add(backLight);
 
         let warehouseModel = null;
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
+        let highlightedMeshes = [];
 
         function collapseRepeatedPhrase(text = "") {
             const cleaned = String(text)
@@ -192,6 +194,29 @@
             return bestScore;
         }
 
+        function clearHighlights() {
+            highlightedMeshes.forEach(({ mesh, originalMaterial }) => {
+                if (mesh.material && mesh.material !== originalMaterial) {
+                    if (Array.isArray(mesh.material)) {
+                        mesh.material.forEach((m) => m.dispose());
+                    } else {
+                        mesh.material.dispose();
+                    }
+                }
+                mesh.material = originalMaterial;
+            });
+            highlightedMeshes = [];
+        }
+
+        function applyEmissiveHighlight(material) {
+            const cloned = material.clone();
+            if (cloned.emissive) {
+                cloned.emissive.setHex(0x00e5ff);
+                cloned.emissiveIntensity = 0.85;
+            }
+            return cloned;
+        }
+
         function zoomToBox(box, paddingFactor = 1.8) {
             if (box.isEmpty()) return;
 
@@ -218,6 +243,8 @@
         function applyAssetFilter(rawAsset) {
             if (!warehouseModel) return;
 
+            clearHighlights();
+
             const decodedAsset = decodeURIComponent(rawAsset || "").trim();
             if (!decodedAsset || decodedAsset.toUpperCase() === "ALL") {
                 return;
@@ -240,10 +267,19 @@
 
             if (matchedObjects.length > 0) {
                 const focusBox = new THREE.Box3();
-                matchedObjects.forEach((mesh) => focusBox.expandByObject(mesh));
+
+                matchedObjects.forEach((mesh) => {
+                    const originalMaterial = mesh.material;
+                    mesh.material = Array.isArray(originalMaterial)
+                        ? originalMaterial.map(applyEmissiveHighlight)
+                        : applyEmissiveHighlight(originalMaterial);
+
+                    highlightedMeshes.push({ mesh, originalMaterial });
+                    focusBox.expandByObject(mesh);
+                });
 
                 zoomToBox(focusBox, 1.8);
-                console.log(`Zooming to ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
+                console.log(`Highlighted & zooming to ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
             } else {
                 const availableNames = [];
                 warehouseModel.traverse((node) => {
@@ -256,12 +292,26 @@
             }
         }
 
-        // 3. Load the GLB File
+        // 3. Load the GLB File and soften floor specular reflections
         const loader = new THREE.GLTFLoader();
         loader.load(
             'Warehouse-optimized.glb',
             function (gltf) {
                 warehouseModel = gltf.scene;
+
+                warehouseModel.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        const mats = Array.isArray(child.material) ? child.material : [child.material];
+                        mats.forEach((mat) => {
+                            const nameLower = (child.name || "").toLowerCase();
+                            if (nameLower.includes("floor") || nameLower.includes("slab") || nameLower.includes("ground")) {
+                                if ("roughness" in mat) mat.roughness = Math.max(mat.roughness ?? 0.8, 0.9);
+                                if ("metalness" in mat) mat.metalness = 0.0;
+                            }
+                        });
+                    }
+                });
+
                 scene.add(warehouseModel);
 
                 const box = new THREE.Box3().setFromObject(warehouseModel);
