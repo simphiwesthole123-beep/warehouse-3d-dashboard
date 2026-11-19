@@ -106,13 +106,49 @@
         const mouse = new THREE.Vector2();
         let highlightedMeshes = [];
 
-        // Normalize names (strips trailing SketchUp/GLB instance suffixes like _1, #2, (1), etc.)
-        function cleanInstanceName(raw = "") {
-            return String(raw)
-                .replace(/#\d+$/, "")
-                .replace(/_\d+$/, "")
-                .replace(/\(\d+\)$/, "")
+        // Collapse repeated phrases/words and replace underscores with spaces
+        function collapseRepeatedPhrase(text = "") {
+            const cleaned = String(text)
+                .replace(/_/g, " ")
+                .replace(/#\d+/g, "")
+                .replace(/\(\d+\)/g, "")
+                .replace(/\s+/g, " ")
                 .trim();
+
+            if (!cleaned) return "";
+
+            // 1. Exact duplicate half-string (e.g., "Line Belt Conveyor Line Belt Conveyor")
+            const halfMatch = cleaned.match(/^(.+?)\s+\1$/i);
+            if (halfMatch) {
+                return halfMatch[1].trim();
+            }
+
+            // 2. Even word-count split check for repeated phrases
+            const words = cleaned.split(" ");
+            if (words.length % 2 === 0) {
+                const mid = words.length / 2;
+                const firstHalf = words.slice(0, mid).join(" ");
+                const secondHalf = words.slice(mid).join(" ");
+                if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
+                    return firstHalf;
+                }
+            }
+
+            // 3. Consecutive duplicate single words (e.g., "Bay 1 Bay 1")
+            const deduped = [];
+            for (const part of words) {
+                if (deduped.length === 0 || deduped[deduped.length - 1].toLowerCase() !== part.toLowerCase()) {
+                    deduped.push(part);
+                }
+            }
+
+            return deduped.join(" ");
+        }
+
+        function cleanInstanceName(raw = "") {
+            return collapseRepeatedPhrase(
+                String(raw).replace(/_\d+$/, "")
+            );
         }
 
         function normalizeName(str = "") {
@@ -139,11 +175,11 @@
                 const norm = normalizeName(rawName);
                 if (!norm) continue;
 
-                // Score 3: Exact match on instance/node name (prevents "Volumizer 1" from matching "Volumizer 1 Conveyor")
+                // Score 3: Exact match on cleaned node name
                 if (norm === targetKey) {
                     return 3;
                 }
-                // Score 2: Starts with targetKey followed by an instance number only (e.g., "volumizer1_01")
+                // Score 2: Starts with targetKey followed by digits only
                 const escapedTarget = targetKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
                 if (new RegExp("^" + escapedTarget + "\\d+$").test(norm) && bestScore < 2) {
                     bestScore = 2;
@@ -199,7 +235,6 @@
                 else if (score === 2) numberedInstanceMatches.push(child);
             });
 
-            // Use exact matches first so "Volumizer 1" does not accidentally highlight "Volumizer 1 Conveyor"
             const matchedObjects = exactMatches.length > 0 ? exactMatches : numberedInstanceMatches;
 
             if (matchedObjects.length > 0) {
@@ -221,7 +256,7 @@
                     controls.update();
                 }
 
-                console.log(`Matched ${matchedObjects.length} mesh(es) for exact/instance asset:`, decodedAsset);
+                console.log(`Highlighted ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
             } else {
                 const availableNames = [];
                 warehouseModel.traverse((node) => {
@@ -230,7 +265,7 @@
                     }
                 });
                 console.warn("No exact/instance 3D match found for:", decodedAsset);
-                console.log("Available instance/node names:", [...new Set(availableNames)].slice(0, 60));
+                console.log("Available cleaned node names:", [...new Set(availableNames)].slice(0, 60));
             }
         }
 
@@ -246,7 +281,7 @@
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
 
-                // Closer framing than before
+                // Closer initial camera framing
                 const maxDim = Math.max(size.x, size.y, size.z);
                 camera.position.set(center.x, center.y + maxDim * 0.35, center.z + maxDim * 0.72);
                 controls.target.copy(center);
@@ -286,7 +321,7 @@
                 let matchedRecord = null;
                 let resolvedName = "Unknown Asset";
 
-                // Pass 1: Look for an exact normalized match first (e.g., "Volumizer 1" vs "Volumizer 1 Conveyor")
+                // Pass 1: Exact normalized match against cleaned node names
                 for (const name of namesInChain) {
                     const cleanNorm = normalizeName(name);
                     matchedRecord = warehouseData.find((d) => normalizeName(d.Machine) === cleanNorm);
@@ -296,14 +331,17 @@
                     }
                 }
 
-                // Pass 2: Fallback partial match only if no exact name matched
+                // Pass 2: Fallback partial match on cleaned names
                 if (!matchedRecord) {
                     for (const name of namesInChain) {
-                        const cleanName = cleanInstanceName(name).toLowerCase();
-                        matchedRecord = warehouseData.find((d) =>
-                            cleanName.includes(d.Machine.toLowerCase()) ||
-                            d.Machine.toLowerCase().includes(cleanName)
-                        );
+                        const cleanedLower = cleanInstanceName(name).toLowerCase();
+                        if (!cleanedLower) continue;
+                        matchedRecord = warehouseData.find((d) => {
+                            const machineLower = d.Machine.toLowerCase();
+                            return cleanedLower === machineLower ||
+                                   cleanedLower.includes(machineLower) ||
+                                   machineLower.includes(cleanedLower);
+                        });
                         if (matchedRecord) {
                             resolvedName = matchedRecord.Machine;
                             break;
@@ -312,14 +350,20 @@
                 }
 
                 if (!matchedRecord) {
-                    const fallbackName = [...namesInChain].reverse().find((n) =>
-                        !n.startsWith("Assembly") &&
-                        !n.startsWith("Geom") &&
-                        !n.startsWith("mesh") &&
-                        !n.toLowerCase().includes("roller")
-                    ) || namesInChain[0] || "Standard Asset";
+                    const fallbackName = [...namesInChain]
+                        .map((n) => cleanInstanceName(n))
+                        .reverse()
+                        .find((n) =>
+                            n &&
+                            !n.toLowerCase().startsWith("assembly") &&
+                            !n.toLowerCase().startsWith("geom") &&
+                            !n.toLowerCase().startsWith("group") &&
+                            !n.toLowerCase().startsWith("untitled") &&
+                            !n.toLowerCase().startsWith("mesh") &&
+                            !n.toLowerCase().includes("sketchupdwg")
+                        ) || cleanInstanceName(namesInChain[0]) || "Standard Asset";
 
-                    resolvedName = cleanInstanceName(fallbackName);
+                    resolvedName = fallbackName;
                 }
 
                 console.log("Resolved Machine Name for Power BI Link:", resolvedName);
