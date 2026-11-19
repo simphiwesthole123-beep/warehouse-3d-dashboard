@@ -77,7 +77,7 @@
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        
+
         renderer.setSize(window.innerWidth, window.innerHeight);
         container.appendChild(renderer.domElement);
 
@@ -100,6 +100,104 @@
         let warehouseModel = null;
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
+        let highlightedMeshes = [];
+
+        // Helper to normalize names across Power BI slicers and GLB nodes/meshes
+        function normalizeName(str = "") {
+            return String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
+        }
+
+        function clearHighlights() {
+            highlightedMeshes.forEach(({ mesh, originalMaterial }) => {
+                if (mesh.material && mesh.material !== originalMaterial) {
+                    mesh.material.dispose();
+                }
+                mesh.material = originalMaterial;
+            });
+            highlightedMeshes = [];
+        }
+
+        function hasMatchingAncestor(obj, targetKey) {
+            let curr = obj;
+            while (curr && curr !== scene) {
+                if (curr.name) {
+                    const cleanNode = normalizeName(curr.name.replace(/_\d+$/, ""));
+                    if (cleanNode.includes(targetKey) || targetKey.includes(cleanNode) && cleanNode.length > 2) {
+                        return true;
+                    }
+                }
+                curr = curr.parent;
+            }
+            return false;
+        }
+
+        function applyAssetFilter(rawAsset) {
+            if (!warehouseModel) return;
+
+            clearHighlights();
+
+            const decodedAsset = decodeURIComponent(rawAsset || "").trim();
+            if (!decodedAsset || decodedAsset.toUpperCase() === "ALL") {
+                return;
+            }
+
+            const targetKey = normalizeName(decodedAsset);
+            if (!targetKey) return;
+
+            const matchedObjects = [];
+
+            warehouseModel.traverse((child) => {
+                if (child.isMesh && hasMatchingAncestor(child, targetKey)) {
+                    matchedObjects.push(child);
+                }
+            });
+
+            if (matchedObjects.length > 0) {
+                const focusBox = new THREE.Box3();
+
+                matchedObjects.forEach((mesh) => {
+                    const originalMaterial = mesh.material;
+                    const clonedMat = Array.isArray(originalMaterial)
+                        ? originalMaterial.map((m) => {
+                            const c = m.clone();
+                            if (c.emissive) {
+                                c.emissive.setHex(0x00e5ff);
+                                c.emissiveIntensity = 0.85;
+                            }
+                            return c;
+                        })
+                        : (() => {
+                            const c = originalMaterial.clone();
+                            if (c.emissive) {
+                                c.emissive.setHex(0x00e5ff);
+                                c.emissiveIntensity = 0.85;
+                            }
+                            return c;
+                        })();
+
+                    mesh.material = clonedMat;
+                    highlightedMeshes.push({ mesh, originalMaterial });
+                    focusBox.expandByObject(mesh);
+                });
+
+                if (!focusBox.isEmpty()) {
+                    const targetCenter = focusBox.getCenter(new THREE.Vector3());
+                    controls.target.copy(targetCenter);
+                    controls.update();
+                }
+
+                console.log(`Highlighted ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
+            } else {
+                const availableNames = [];
+                warehouseModel.traverse((node) => {
+                    if (node.name && node.name.trim() !== "") {
+                        availableNames.push(node.name.trim());
+                    }
+                });
+                console.warn("No 3D match found for slicer asset:", decodedAsset);
+                console.log("Sample GLB node names:", [...new Set(availableNames)].slice(0, 40));
+            }
+        }
 
         // 3. Load the GLB File
         const loader = new THREE.GLTFLoader();
@@ -108,15 +206,22 @@
             function (gltf) {
                 warehouseModel = gltf.scene;
                 scene.add(warehouseModel);
-                
+
                 const box = new THREE.Box3().setFromObject(warehouseModel);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
-                
+
                 const maxDim = Math.max(size.x, size.y, size.z);
                 camera.position.set(center.x, center.y + maxDim * 0.6, center.z + maxDim * 1.2);
                 controls.target.copy(center);
                 controls.update();
+
+                // Apply initial ?asset= query parameter from Power BI iframe URL
+                const params = new URLSearchParams(window.location.search);
+                const initialAsset = params.get("asset");
+                if (initialAsset) {
+                    applyAssetFilter(initialAsset);
+                }
             },
             undefined,
             function (error) {
@@ -138,7 +243,7 @@
 
             if (intersects.length > 0) {
                 const hitObject = intersects[0].object;
-                
+
                 let namesInChain = [];
                 let curr = hitObject;
                 while (curr && curr !== scene) {
