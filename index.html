@@ -67,7 +67,11 @@
             { Machine: "Bay1 Inbound Conveyor", JobCard: "N/A", Description: "Bay 1 Feed Line", Location: "Bay 1", Quantity: "1,00", Condition: "15.0", Comment: "Check Roller" },
             { Machine: "Bay2 Inbound Conveyor", JobCard: "N/A", Description: "Bay 2 Feed Line", Location: "Bay 2", Quantity: "1,00", Condition: "25.0", Comment: "Check Roller" },
             { Machine: "Volumizer 1", JobCard: "N/A", Description: "Volumizer Unit 1", Location: "Main Floor", Quantity: "1,00", Condition: "30.0", Comment: "Operational" },
-            { Machine: "Volumizer 2", JobCard: "N/A", Description: "Volumizer Unit 2", Location: "Main Floor", Quantity: "1,00", Condition: "20.0", Comment: "Operational" }
+            { Machine: "Volumizer 1 Conveyor", JobCard: "N/A", Description: "Volumizer 1 Feed Conveyor", Location: "Main Floor", Quantity: "1,00", Condition: "50.0", Comment: "Operational" },
+            { Machine: "Volumizer 1 Power Supply", JobCard: "N/A", Description: "Volumizer 1 PSU", Location: "Main Floor", Quantity: "1,00", Condition: "80.0", Comment: "Operational" },
+            { Machine: "Volumizer 2", JobCard: "N/A", Description: "Volumizer Unit 2", Location: "Main Floor", Quantity: "1,00", Condition: "20.0", Comment: "Operational" },
+            { Machine: "Volumizer 2 Conveyor", JobCard: "N/A", Description: "Volumizer 2 Feed Conveyor", Location: "Main Floor", Quantity: "1,00", Condition: "55.0", Comment: "Operational" },
+            { Machine: "Volumizer 2 Power Supply", JobCard: "N/A", Description: "Volumizer 2 PSU", Location: "Main Floor", Quantity: "1,00", Condition: "75.0", Comment: "Operational" }
         ];
 
         // 1. Setup Scene, Camera, and Renderer
@@ -75,7 +79,7 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0f172a);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
 
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -102,33 +106,74 @@
         const mouse = new THREE.Vector2();
         let highlightedMeshes = [];
 
-        // Helper to normalize names across Power BI slicers and GLB nodes/meshes
+        // Normalize names (strips trailing SketchUp/GLB instance suffixes like _1, #2, (1), etc.)
+        function cleanInstanceName(raw = "") {
+            return String(raw)
+                .replace(/#\d+$/, "")
+                .replace(/_\d+$/, "")
+                .replace(/\(\d+\)$/, "")
+                .trim();
+        }
+
         function normalizeName(str = "") {
-            return String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
+            return cleanInstanceName(str).toLowerCase().replace(/[^a-z0-9]/g, "");
+        }
+
+        function getAncestorChain(obj) {
+            const chain = [];
+            let curr = obj;
+            while (curr && curr !== scene) {
+                if (curr.name && curr.name.trim() !== "") {
+                    chain.push(curr.name.trim());
+                }
+                curr = curr.parent;
+            }
+            return chain;
+        }
+
+        function getMatchScore(obj, targetKey) {
+            const chain = getAncestorChain(obj);
+            let bestScore = 0;
+
+            for (const rawName of chain) {
+                const norm = normalizeName(rawName);
+                if (!norm) continue;
+
+                // Score 3: Exact match on instance/node name (prevents "Volumizer 1" from matching "Volumizer 1 Conveyor")
+                if (norm === targetKey) {
+                    return 3;
+                }
+                // Score 2: Starts with targetKey followed by an instance number only (e.g., "volumizer1_01")
+                const escapedTarget = targetKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                if (new RegExp("^" + escapedTarget + "\\d+$").test(norm) && bestScore < 2) {
+                    bestScore = 2;
+                }
+            }
+
+            return bestScore;
         }
 
         function clearHighlights() {
             highlightedMeshes.forEach(({ mesh, originalMaterial }) => {
                 if (mesh.material && mesh.material !== originalMaterial) {
-                    mesh.material.dispose();
+                    if (Array.isArray(mesh.material)) {
+                        mesh.material.forEach((m) => m.dispose());
+                    } else {
+                        mesh.material.dispose();
+                    }
                 }
                 mesh.material = originalMaterial;
             });
             highlightedMeshes = [];
         }
 
-        function hasMatchingAncestor(obj, targetKey) {
-            let curr = obj;
-            while (curr && curr !== scene) {
-                if (curr.name) {
-                    const cleanNode = normalizeName(curr.name.replace(/_\d+$/, ""));
-                    if (cleanNode.includes(targetKey) || targetKey.includes(cleanNode) && cleanNode.length > 2) {
-                        return true;
-                    }
-                }
-                curr = curr.parent;
+        function applyEmissiveHighlight(material) {
+            const cloned = material.clone();
+            if (cloned.emissive) {
+                cloned.emissive.setHex(0x00e5ff);
+                cloned.emissiveIntensity = 0.85;
             }
-            return false;
+            return cloned;
         }
 
         function applyAssetFilter(rawAsset) {
@@ -144,38 +189,28 @@
             const targetKey = normalizeName(decodedAsset);
             if (!targetKey) return;
 
-            const matchedObjects = [];
+            const exactMatches = [];
+            const numberedInstanceMatches = [];
 
             warehouseModel.traverse((child) => {
-                if (child.isMesh && hasMatchingAncestor(child, targetKey)) {
-                    matchedObjects.push(child);
-                }
+                if (!child.isMesh) return;
+                const score = getMatchScore(child, targetKey);
+                if (score === 3) exactMatches.push(child);
+                else if (score === 2) numberedInstanceMatches.push(child);
             });
+
+            // Use exact matches first so "Volumizer 1" does not accidentally highlight "Volumizer 1 Conveyor"
+            const matchedObjects = exactMatches.length > 0 ? exactMatches : numberedInstanceMatches;
 
             if (matchedObjects.length > 0) {
                 const focusBox = new THREE.Box3();
 
                 matchedObjects.forEach((mesh) => {
                     const originalMaterial = mesh.material;
-                    const clonedMat = Array.isArray(originalMaterial)
-                        ? originalMaterial.map((m) => {
-                            const c = m.clone();
-                            if (c.emissive) {
-                                c.emissive.setHex(0x00e5ff);
-                                c.emissiveIntensity = 0.85;
-                            }
-                            return c;
-                        })
-                        : (() => {
-                            const c = originalMaterial.clone();
-                            if (c.emissive) {
-                                c.emissive.setHex(0x00e5ff);
-                                c.emissiveIntensity = 0.85;
-                            }
-                            return c;
-                        })();
+                    mesh.material = Array.isArray(originalMaterial)
+                        ? originalMaterial.map(applyEmissiveHighlight)
+                        : applyEmissiveHighlight(originalMaterial);
 
-                    mesh.material = clonedMat;
                     highlightedMeshes.push({ mesh, originalMaterial });
                     focusBox.expandByObject(mesh);
                 });
@@ -186,16 +221,16 @@
                     controls.update();
                 }
 
-                console.log(`Highlighted ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
+                console.log(`Matched ${matchedObjects.length} mesh(es) for exact/instance asset:`, decodedAsset);
             } else {
                 const availableNames = [];
                 warehouseModel.traverse((node) => {
                     if (node.name && node.name.trim() !== "") {
-                        availableNames.push(node.name.trim());
+                        availableNames.push(cleanInstanceName(node.name));
                     }
                 });
-                console.warn("No 3D match found for slicer asset:", decodedAsset);
-                console.log("Sample GLB node names:", [...new Set(availableNames)].slice(0, 40));
+                console.warn("No exact/instance 3D match found for:", decodedAsset);
+                console.log("Available instance/node names:", [...new Set(availableNames)].slice(0, 60));
             }
         }
 
@@ -211,8 +246,9 @@
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
 
+                // Closer framing than before
                 const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(center.x, center.y + maxDim * 0.6, center.z + maxDim * 1.2);
+                camera.position.set(center.x, center.y + maxDim * 0.35, center.z + maxDim * 0.72);
                 controls.target.copy(center);
                 controls.update();
 
@@ -229,7 +265,7 @@
             }
         );
 
-        // 4. Click Interaction with Deep Ancestor Chain Scanning & Console Debugging
+        // 4. Click Interaction with Deep Ancestor Chain Scanning & Exact-First Matching
         window.addEventListener('click', onPointerDown, false);
 
         function onPointerDown(event) {
@@ -243,42 +279,47 @@
 
             if (intersects.length > 0) {
                 const hitObject = intersects[0].object;
-
-                let namesInChain = [];
-                let curr = hitObject;
-                while (curr && curr !== scene) {
-                    if (curr.name && curr.name.trim() !== '') {
-                        namesInChain.push(curr.name);
-                    }
-                    curr = curr.parent;
-                }
+                const namesInChain = getAncestorChain(hitObject);
 
                 console.log("=== Clicked Node Chain ===", namesInChain);
 
                 let matchedRecord = null;
                 let resolvedName = "Unknown Asset";
 
-                for (let name of namesInChain) {
-                    let cleanName = name.replace(/_\d+$/, '').trim();
-
-                    matchedRecord = warehouseData.find(d => 
-                        cleanName.toLowerCase() === d.Machine.toLowerCase() ||
-                        cleanName.toLowerCase().includes(d.Machine.toLowerCase()) || 
-                        d.Machine.toLowerCase().includes(cleanName.toLowerCase())
-                    );
-
+                // Pass 1: Look for an exact normalized match first (e.g., "Volumizer 1" vs "Volumizer 1 Conveyor")
+                for (const name of namesInChain) {
+                    const cleanNorm = normalizeName(name);
+                    matchedRecord = warehouseData.find((d) => normalizeName(d.Machine) === cleanNorm);
                     if (matchedRecord) {
                         resolvedName = matchedRecord.Machine;
                         break;
                     }
                 }
 
+                // Pass 2: Fallback partial match only if no exact name matched
                 if (!matchedRecord) {
-                    const fallbackName = namesInChain.reverse().find(n => 
-                        !n.startsWith('Assembly') && !n.startsWith('Geom') && !n.startsWith('mesh') && !n.includes('roller')
+                    for (const name of namesInChain) {
+                        const cleanName = cleanInstanceName(name).toLowerCase();
+                        matchedRecord = warehouseData.find((d) =>
+                            cleanName.includes(d.Machine.toLowerCase()) ||
+                            d.Machine.toLowerCase().includes(cleanName)
+                        );
+                        if (matchedRecord) {
+                            resolvedName = matchedRecord.Machine;
+                            break;
+                        }
+                    }
+                }
+
+                if (!matchedRecord) {
+                    const fallbackName = [...namesInChain].reverse().find((n) =>
+                        !n.startsWith("Assembly") &&
+                        !n.startsWith("Geom") &&
+                        !n.startsWith("mesh") &&
+                        !n.toLowerCase().includes("roller")
                     ) || namesInChain[0] || "Standard Asset";
 
-                    resolvedName = fallbackName.replace(/_\d+$/, '').trim();
+                    resolvedName = cleanInstanceName(fallbackName);
                 }
 
                 console.log("Resolved Machine Name for Power BI Link:", resolvedName);
