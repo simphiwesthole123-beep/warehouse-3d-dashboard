@@ -47,6 +47,8 @@
 </head>
 <body>
 
+    <!-- Instruction Banner -->
+    <div class="instruction-banner">Click any asset in the 3D warehouse to inspect</div>
 
     <!-- Container for 3D Viewport -->
     <div id="webgl-container"></div>
@@ -112,7 +114,6 @@
         let warehouseModel = null;
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
-        let highlightedMeshes = [];
 
         function collapseRepeatedPhrase(text = "") {
             const cleaned = String(text)
@@ -191,29 +192,6 @@
             return bestScore;
         }
 
-        function clearHighlights() {
-            highlightedMeshes.forEach(({ mesh, originalMaterial }) => {
-                if (mesh.material && mesh.material !== originalMaterial) {
-                    if (Array.isArray(mesh.material)) {
-                        mesh.material.forEach((m) => m.dispose());
-                    } else {
-                        mesh.material.dispose();
-                    }
-                }
-                mesh.material = originalMaterial;
-            });
-            highlightedMeshes = [];
-        }
-
-        function applyEmissiveHighlight(material) {
-            const cloned = material.clone();
-            if (cloned.emissive) {
-                cloned.emissive.setHex(0x00e5ff);
-                cloned.emissiveIntensity = 0.85;
-            }
-            return cloned;
-        }
-
         function zoomToBox(box, paddingFactor = 1.8) {
             if (box.isEmpty()) return;
 
@@ -226,7 +204,6 @@
             const fitWidthDistance = fitHeightDistance / Math.max(camera.aspect, 0.5);
             const distance = paddingFactor * Math.max(fitHeightDistance, fitWidthDistance);
 
-            // Keep current camera-to-target direction if valid, otherwise angle from front-top
             const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
             if (dir.lengthSq() < 0.0001) {
                 dir.set(0.5, 0.6, 1);
@@ -240,8 +217,6 @@
 
         function applyAssetFilter(rawAsset) {
             if (!warehouseModel) return;
-
-            clearHighlights();
 
             const decodedAsset = decodeURIComponent(rawAsset || "").trim();
             if (!decodedAsset || decodedAsset.toUpperCase() === "ALL") {
@@ -265,21 +240,10 @@
 
             if (matchedObjects.length > 0) {
                 const focusBox = new THREE.Box3();
+                matchedObjects.forEach((mesh) => focusBox.expandByObject(mesh));
 
-                matchedObjects.forEach((mesh) => {
-                    const originalMaterial = mesh.material;
-                    mesh.material = Array.isArray(originalMaterial)
-                        ? originalMaterial.map(applyEmissiveHighlight)
-                        : applyEmissiveHighlight(originalMaterial);
-
-                    highlightedMeshes.push({ mesh, originalMaterial });
-                    focusBox.expandByObject(mesh);
-                });
-
-                // Smoothly zoom camera into the highlighted asset
                 zoomToBox(focusBox, 1.8);
-
-                console.log(`Highlighted & zooming to ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
+                console.log(`Zooming to ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
             } else {
                 const availableNames = [];
                 warehouseModel.traverse((node) => {
