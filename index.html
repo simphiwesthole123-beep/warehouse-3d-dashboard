@@ -6,15 +6,42 @@
   <title>Stock Request Form — Inter-Branch Transfer (IBT)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    :root { --bg: #fde4d8; --header: #0b0b0b; --accent: #0078d4; --danger: #c42b1c; }
+    :root {
+      --bg: #fde4d8;
+      --header: #0b0b0b;
+      --subbar: #1c1c1c;
+      --card: #ffffff;
+      --border: #dfbfb0;
+      --accent: #0078d4;
+      --danger: #c42b1c;
+      --text: #1b1b1b;
+      --muted: #5f5f5f;
+    }
     * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
-    body { margin: 0; background: var(--bg); color: #1b1b1b; min-height: 100vh; }
-    header { background: var(--header); color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
-    header h1 { margin: 0; font-size: 1.35rem; }
-    header p { margin: 2px 0 0; font-size: 0.85rem; color: #d0d0d0; }
+    body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* Top Header & Sub-bar */
+    header {
+      background: var(--header);
+      color: #fff;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 { margin: 0; font-size: 1.3rem; font-weight: 700; }
+    header p { margin: 2px 0 0; font-size: 0.82rem; color: #c8c8c8; }
 
     /* PIN & Email Gate */
-    #pinGate { max-width: 420px; margin: 64px auto; background: #fff; padding: 28px 24px; border-radius: 10px; border: 1px solid #e2c7b8; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    #pinGate {
+      max-width: 420px;
+      margin: 64px auto;
+      background: #fff;
+      padding: 28px 24px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
     #pinGate h2 { margin: 0 0 20px; font-size: 1.25rem; text-align: center; }
     .field-group { margin-bottom: 14px; }
     .field-group label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; }
@@ -26,28 +53,210 @@
 
     /* Main App */
     #appView { display: none; }
-    .branch-bar { background: #1e1e1e; color: #fff; padding: 8px 24px; display: flex; gap: 12px; align-items: center; font-size: 0.9rem; flex-wrap: wrap; }
-    .branch-bar select, .btn-lock { padding: 5px 10px; border-radius: 4px; border: none; }
-    .user-tag { font-size: 0.84rem; color: #cfcfcf; }
-    .btn-lock { margin-left: auto; background: #333; color: #fff; cursor: pointer; font-size: 0.82rem; }
-    .container { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; padding: 18px 24px; max-width: 1400px; margin: auto; }
-    @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+    .branch-bar {
+      background: var(--subbar);
+      color: #fff;
+      padding: 8px 24px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-size: 0.88rem;
+      flex-wrap: wrap;
+    }
+    .branch-bar select {
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: none;
+      font-weight: 600;
+      background: #fff;
+      color: #111;
+    }
+    .user-tag { font-size: 0.83rem; color: #cfcfcf; }
+    .btn-lock {
+      margin-left: auto;
+      background: #333;
+      color: #fff;
+      border: 1px solid #4a4a4a;
+      padding: 5px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.82rem;
+    }
+    .btn-lock:hover { background: #444; }
+
+    /* Main Workspace Grid */
+    .container {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 18px;
+      padding: 16px 24px 24px;
+      max-width: 1440px;
+      margin: auto;
+      align-items: stretch;
+    }
+    @media (max-width: 960px) {
+      .container { grid-template-columns: 1fr; }
+    }
+
     .search-box { grid-column: 1 / -1; }
-    .search-box input { width: 100%; padding: 12px 14px; font-size: 1rem; border: 1px solid #bbb; border-radius: 6px; background: #fff; }
-    #map { height: 470px; width: 100%; border-radius: 8px; border: 1px solid #1d2b3a; background: #07111e; z-index: 1; }
+    .search-box input {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 0.98rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+
+    /* Left Map */
+    #map {
+      height: 100%;
+      min-height: 510px;
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid #1d2b3a;
+      background: #07111e;
+      z-index: 1;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    }
     .night-tiles {
       filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(105%);
     }
-    .panel { display: flex; flex-direction: column; gap: 12px; }
-    .summary-card { background: #fff; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2c7b8; display: flex; flex-direction: column; gap: 6px; }
-    .branch-pills { display: flex; flex-wrap: wrap; gap: 8px; }
-    .pill { padding: 8px 14px; border: none; border-radius: 5px; background: #9e9e9e; color: #fff; font-weight: 600; cursor: pointer; }
-    .pill.active { background: var(--accent); }
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #fff; padding: 14px; border-radius: 8px; border: 1px solid #e2c7b8; }
-    .form-grid input, .form-grid textarea { width: 100%; padding: 9px 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.92rem; }
+
+    /* Right Panel */
+    .panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    /* 4 KPI Cards Row */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 600px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .kpi-header {
+      padding: 8px 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #333;
+      background: #faf5f2;
+      border-bottom: 1px solid #ecd6cb;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.2;
+    }
+    .kpi-body {
+      padding: 12px 8px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+    .kpi-main {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #111;
+      line-height: 1.25;
+    }
+    .kpi-sub {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    /* Branch Selector Section */
+    .branch-select-box {
+      padding-top: 2px;
+      border-top: 1px solid #e7c9ba;
+    }
+    .branch-select-label {
+      font-size: 0.84rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #2b2b2b;
+    }
+    .branch-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 36px;
+      align-items: center;
+    }
+    .pill {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      background: #8e8e8e;
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+    .pill:hover { background: #757575; }
+    .pill.active {
+      background: var(--accent);
+      box-shadow: 0 2px 8px rgba(0, 120, 212, 0.35);
+    }
+
+    /* Form Box */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      background: var(--card);
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+    .form-grid input, .form-grid textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.92rem;
+      background: #fff;
+    }
+    .form-grid input:focus, .form-grid textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
     .full { grid-column: 1 / -1; }
-    .error { color: var(--danger); font-weight: 600; font-size: 0.85rem; display: none; }
-    button.submit { grid-column: 1 / -1; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    .error { color: var(--danger); font-weight: 600; font-size: 0.84rem; display: none; }
+    button.submit {
+      grid-column: 1 / -1;
+      padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.98rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 2px;
+    }
     button.submit:disabled { background: #b5b5b5; cursor: not-allowed; }
 
     /* Gold Pin & Pulsating Red Dot */
@@ -131,22 +340,55 @@
     <div id="map"></div>
 
     <div class="panel">
-      <div class="summary-card">
-        <div id="nearestText">📍 Select an item to locate nearest stock</div>
-        <div id="totalStockText">📦 Total Network Stock: 0 units</div>
-        <div id="routeText">🛣️ Select a source branch pill to preview road route</div>
+      <!-- 4 KPI Cards matching wireframe -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-header">Nearest Stock</div>
+          <div class="kpi-body">
+            <div id="kpiNearestBranch" class="kpi-main">—</div>
+            <div id="kpiNearestMeta" class="kpi-sub">Select item</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">Total Network Stock</div>
+          <div class="kpi-body">
+            <div id="kpiTotalStock" class="kpi-main">0 units</div>
+            <div id="kpiBranchCount" class="kpi-sub">0 branches</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">Route</div>
+          <div class="kpi-body">
+            <div id="kpiRoutePath" class="kpi-main">—</div>
+            <div id="kpiRouteKm" class="kpi-sub">Select branch</div>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">ETA Estimate</div>
+          <div class="kpi-body">
+            <div id="kpiEta" class="kpi-main">—</div>
+            <div id="kpiEtaMode" class="kpi-sub">Drive time</div>
+          </div>
+        </div>
       </div>
 
-      <div>
-        <div style="font-size:0.85rem;font-weight:600;margin-bottom:6px;">Select Branch You Want Item From:</div>
-        <div id="branchPills" class="branch-pills"></div>
+      <!-- Branch Selector Pills -->
+      <div class="branch-select-box">
+        <div class="branch-select-label">Select Branch You Want Item From:</div>
+        <div id="branchPills" class="branch-pills">
+          <span style="font-size:0.83rem;color:#666;">Search and select an item above to view available branches.</span>
+        </div>
       </div>
 
+      <!-- Requisition Form -->
       <div class="form-grid">
         <input id="requesterName" placeholder="Requester Full Name *" class="full" />
         <input id="requestQty" type="number" min="1" placeholder="Request Quantity *" />
         <input id="jobCard" placeholder="Job Card Number *" />
-        <textarea id="comments" rows="2" placeholder="Reason or special delivery instructions... *" class="full"></textarea>
+        <textarea id="comments" rows="3" placeholder="Reason or special delivery instructions... *" class="full"></textarea>
         <div id="qtyError" class="error full"></div>
         <button id="btnSubmit" class="submit" disabled>Submit IBT Request</button>
       </div>
@@ -232,24 +474,14 @@
     const totalMins = Math.max(1, Math.round(seconds / 60));
     const hrs = Math.floor(totalMins / 60);
     const mins = totalMins % 60;
-    return hrs > 0 ? `${hrs}h ${mins}m` : `${totalMins} min`;
+    return hrs > 0 ? `${hrs}h ${String(mins).padStart(2, "0")}m` : `${totalMins} min`;
   }
 
   function addGlowingRoute(latLngs, dashed = false) {
     if (!dashed) {
-      L.polyline(latLngs, {
-        color: "#00c8ff",
-        weight: 12,
-        opacity: 0.22
-      }).addTo(routeLayer);
-
-      L.polyline(latLngs, {
-        color: "#22d3ee",
-        weight: 7,
-        opacity: 0.45
-      }).addTo(routeLayer);
+      L.polyline(latLngs, { color: "#00c8ff", weight: 12, opacity: 0.22 }).addTo(routeLayer);
+      L.polyline(latLngs, { color: "#22d3ee", weight: 7, opacity: 0.45 }).addTo(routeLayer);
     }
-
     return L.polyline(latLngs, {
       color: "#99f3ff",
       weight: dashed ? 3.5 : 3.2,
@@ -258,14 +490,20 @@
     }).addTo(routeLayer);
   }
 
+  function clearRouteKpis() {
+    document.getElementById("kpiRoutePath").textContent = "—";
+    document.getElementById("kpiRouteKm").textContent = "Select branch";
+    document.getElementById("kpiEta").textContent = "—";
+    document.getElementById("kpiEtaMode").textContent = "Drive time";
+  }
+
   async function drawRouteToBranch(home, item) {
     if (!routeLayer) return;
     routeLayer.clearLayers();
-    const routeEl = document.getElementById("routeText");
     const myCode = document.getElementById("myBranch").value;
 
     if (!home || !item) {
-      routeEl.textContent = "🛣️ Select a source branch pill to preview road route";
+      clearRouteKpis();
       return;
     }
 
@@ -273,7 +511,9 @@
     const toLat = Number(home.lat), toLon = Number(home.lon);
     const fallbackCoords = [[fromLat, fromLon], [toLat, toLon]];
 
-    routeEl.textContent = `🛣️ Calculating OSRM route (${item.BranchLocation} → ${myCode})...`;
+    document.getElementById("kpiRoutePath").textContent = `${item.BranchLocation} → ${myCode}`;
+    document.getElementById("kpiRouteKm").textContent = "Routing...";
+    document.getElementById("kpiEta").textContent = "...";
 
     try {
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson`;
@@ -287,7 +527,10 @@
         const eta = formatDuration(route.duration);
 
         const coreLine = addGlowingRoute(latLngs, false);
-        routeEl.textContent = `🛣️ OSRM Route (${item.BranchLocation} → ${myCode}): ${roadKm} km (~${eta})`;
+        document.getElementById("kpiRoutePath").textContent = `${item.BranchLocation} → ${myCode}`;
+        document.getElementById("kpiRouteKm").textContent = `${roadKm} KM`;
+        document.getElementById("kpiEta").textContent = eta;
+        document.getElementById("kpiEtaMode").textContent = "OSRM road";
         map.fitBounds(coreLine.getBounds(), { padding: [45, 45], maxZoom: 12 });
         return;
       }
@@ -296,7 +539,10 @@
     }
 
     const fallbackLine = addGlowingRoute(fallbackCoords, true);
-    routeEl.textContent = `🛣️ Direct line (${item.BranchLocation} → ${myCode}): ${item.dist} km (OSRM unavailable)`;
+    document.getElementById("kpiRoutePath").textContent = `${item.BranchLocation} → ${myCode}`;
+    document.getElementById("kpiRouteKm").textContent = `${item.dist} KM`;
+    document.getElementById("kpiEta").textContent = "N/A";
+    document.getElementById("kpiEtaMode").textContent = "Direct line";
     map.fitBounds(fallbackLine.getBounds(), { padding: [45, 45], maxZoom: 12 });
   }
 
@@ -304,10 +550,12 @@
     selectedPart = "";
     selectedSourceBranch = null;
     document.getElementById("partSearch").value = "";
-    document.getElementById("branchPills").innerHTML = "";
-    document.getElementById("nearestText").textContent = "📍 Select an item to locate nearest stock";
-    document.getElementById("totalStockText").textContent = "📦 Total Network Stock: 0 units";
-    document.getElementById("routeText").textContent = "🛣️ Select a source branch pill to preview road route";
+    document.getElementById("branchPills").innerHTML = `<span style="font-size:0.83rem;color:#666;">Search and select an item above to view available branches.</span>`;
+    document.getElementById("kpiNearestBranch").textContent = "—";
+    document.getElementById("kpiNearestMeta").textContent = "Select item";
+    document.getElementById("kpiTotalStock").textContent = "0 units";
+    document.getElementById("kpiBranchCount").textContent = "0 branches";
+    clearRouteKpis();
     document.getElementById("requestQty").value = "";
     document.getElementById("jobCard").value = "";
     document.getElementById("comments").value = "";
@@ -386,7 +634,7 @@
     selectedSourceBranch = null;
     markersLayer.clearLayers();
     if (routeLayer) routeLayer.clearLayers();
-    document.getElementById("routeText").textContent = "🛣️ Select a source branch pill to preview road route";
+    clearRouteKpis();
 
     const myCode = document.getElementById("myBranch").value;
     const home = branches[myCode];
@@ -404,14 +652,24 @@
       .sort((a, b) => a.dist - b.dist);
 
     const totalUnits = matches.reduce((sum, r) => sum + Number(r.QtyInStock), 0);
-    document.getElementById("totalStockText").textContent = `📦 Total Network Stock: ${totalUnits} units`;
-    document.getElementById("nearestText").textContent = matches.length
-      ? `📍 Nearest Stock: ${matches[0].BranchLocation} | ${matches[0].dist} km away (Stock: ${matches[0].QtyInStock})`
-      : "📍 No branch stock available for this item";
+    document.getElementById("kpiTotalStock").textContent = `${totalUnits} units`;
+    document.getElementById("kpiBranchCount").textContent = `${matches.length} ${matches.length === 1 ? "branch" : "branches"}`;
+
+    if (matches.length) {
+      document.getElementById("kpiNearestBranch").textContent = matches[0].BranchLocation;
+      document.getElementById("kpiNearestMeta").textContent = `${matches[0].dist} km • ${matches[0].QtyInStock} avail`;
+    } else {
+      document.getElementById("kpiNearestBranch").textContent = "None";
+      document.getElementById("kpiNearestMeta").textContent = "No stock";
+    }
 
     const pillsDiv = document.getElementById("branchPills");
     pillsDiv.innerHTML = "";
     const bounds = home ? [[home.lat, home.lon]] : [];
+
+    if (!matches.length) {
+      pillsDiv.innerHTML = `<span style="font-size:0.83rem;color:#888;">No branch stock available for this item.</span>`;
+    }
 
     matches.forEach(item => {
       bounds.push([Number(item.Latitude), Number(item.Longitude)]);
