@@ -1,435 +1,511 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Warehouse Live Data Dashboard</title>
-    <style>
-        body, html { 
-            margin: 0; 
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden; 
-            background-color: #0f172a;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        #webgl-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-        }
-        .instruction-banner {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(15, 23, 42, 0.85);
-            color: #cbd5e1;
-            padding: 10px 20px;
-            border-radius: 30px;
-            font-size: 13px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 10;
-            pointer-events: none;
-            backdrop-filter: blur(6px);
-        }
-    </style>
-    <!-- Three.js CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- GLTFLoader CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- OrbitControls CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Request Form — Inter-Branch Transfer (IBT)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root { --bg: #fde4d8; --header: #0b0b0b; --accent: #0078d4; --danger: #c42b1c; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { margin: 0; background: var(--bg); color: #1b1b1b; min-height: 100vh; }
+    header { background: var(--header); color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { margin: 0; font-size: 1.35rem; }
+    header p { margin: 2px 0 0; font-size: 0.85rem; color: #d0d0d0; }
+
+    /* PIN & Email Gate */
+    #pinGate { max-width: 420px; margin: 64px auto; background: #fff; padding: 28px 24px; border-radius: 10px; border: 1px solid #e2c7b8; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    #pinGate h2 { margin: 0 0 20px; font-size: 1.25rem; text-align: center; }
+    .field-group { margin-bottom: 14px; }
+    .field-group label { display: block; font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; }
+    #emailInput { width: 100%; padding: 11px 12px; font-size: 0.95rem; border: 1px solid #bbb; border-radius: 6px; }
+    #pinInput { width: 100%; padding: 12px; font-size: 1.1rem; text-align: center; letter-spacing: 4px; border: 1px solid #bbb; border-radius: 6px; }
+    #btnUnlock { width: 100%; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 6px; }
+    #btnUnlock:disabled { background: #9bbad6; cursor: not-allowed; }
+    #pinError { color: var(--danger); font-size: 0.88rem; font-weight: 600; margin-top: 10px; min-height: 20px; text-align: center; }
+
+    /* Main App */
+    #appView { display: none; }
+    .branch-bar { background: #1e1e1e; color: #fff; padding: 8px 24px; display: flex; gap: 12px; align-items: center; font-size: 0.9rem; flex-wrap: wrap; }
+    .branch-bar select, .btn-lock { padding: 5px 10px; border-radius: 4px; border: none; }
+    .user-tag { font-size: 0.84rem; color: #cfcfcf; }
+    .btn-lock { margin-left: auto; background: #333; color: #fff; cursor: pointer; font-size: 0.82rem; }
+    .container { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; padding: 18px 24px; max-width: 1400px; margin: auto; }
+    @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+    .search-box { grid-column: 1 / -1; }
+    .search-box input { width: 100%; padding: 12px 14px; font-size: 1rem; border: 1px solid #bbb; border-radius: 6px; background: #fff; }
+    #map { height: 470px; width: 100%; border-radius: 8px; border: 1px solid #1d2b3a; background: #07111e; z-index: 1; }
+    .panel { display: flex; flex-direction: column; gap: 12px; }
+    .summary-card { background: #fff; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2c7b8; display: flex; flex-direction: column; gap: 6px; }
+    .branch-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill { padding: 8px 14px; border: none; border-radius: 5px; background: #9e9e9e; color: #fff; font-weight: 600; cursor: pointer; }
+    .pill.active { background: var(--accent); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #fff; padding: 14px; border-radius: 8px; border: 1px solid #e2c7b8; }
+    .form-grid input, .form-grid textarea { width: 100%; padding: 9px 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.92rem; }
+    .full { grid-column: 1 / -1; }
+    .error { color: var(--danger); font-weight: 600; font-size: 0.85rem; display: none; }
+    button.submit { grid-column: 1 / -1; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    button.submit:disabled { background: #b5b5b5; cursor: not-allowed; }
+
+    /* Gold Pin & Pulsating Red Dot */
+    .gold-pin-wrapper { background: transparent; border: none; }
+    .gold-pin-svg {
+      width: 30px;
+      height: 40px;
+      filter: drop-shadow(0 0 7px rgba(255, 204, 51, 0.85)) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.65));
+      transform: translateY(-4px);
+      transition: transform 0.15s ease;
+    }
+    .gold-pin-svg:hover { transform: translateY(-7px) scale(1.08); }
+
+    .pulse-marker-wrapper { background: transparent; border: none; }
+    .pulse-dot {
+      position: relative;
+      width: 16px;
+      height: 16px;
+      margin: 13px;
+      border-radius: 50%;
+      background: #ff2a3c;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px rgba(255, 42, 60, 0.95);
+    }
+    .pulse-dot::after {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      border: 2px solid #ff2a3c;
+      animation: redPulse 1.8s infinite ease-out;
+    }
+    @keyframes redPulse {
+      0% { transform: scale(1); opacity: 0.9; }
+      75% { transform: scale(2.7); opacity: 0; }
+      100% { transform: scale(2.7); opacity: 0; }
+    }
+  </style>
 </head>
 <body>
 
-    <!-- Container for 3D Viewport -->
-    <div id="webgl-container"></div>
+<header>
+  <div>
+    <h1>Stock Request Form</h1>
+    <p>All Components — IBT (Inter-Branch Transfer)</p>
+  </div>
+  <div id="statusBadge" style="font-size:0.85rem;color:#ffd27d;">Verification Required</div>
+</header>
 
-    <script>
-        // Complete database loaded from Logs.csv
-        const warehouseData = [
-            { Machine: "Inbound Holding Conveyor", JobCard: "675 4gyug", Description: "Proximity switch M8", Location: "Storage Unit B", Quantity: "1,00", Condition: "14.0", Comment: "Dead Spade" },
-            { Machine: "Bay Holding Conveyor", JobCard: "798454", Description: "SIMATIC ET 200SP, DIGITAL INPUT MODULE, DI 8X 24VDC STANDARD", Location: "Storage Unit B", Quantity: "12,00", Condition: "85.0", Comment: "Broken Conveyor Belt" },
-            { Machine: "Line Belt Conveyor", JobCard: "798454", Description: "SIMATIC DP, ELECTRON. MODULE F. ET 200SP, F-DI 8X24VDC HF", Location: "Storage Unit B", Quantity: "1,00", Condition: "65.0", Comment: "Standard Operation" },
-            { Machine: "Re-Route Conveyor", JobCard: "N/A", Description: "Diverter Roller Assembly", Location: "Storage Unit A", Quantity: "2,00", Condition: "72.0", Comment: "Routine Check" },
-            { Machine: "Scanner", JobCard: "1555", Description: "Barcode Laser Scanner Module", Location: "Control Room", Quantity: "1,00", Condition: "90.0", Comment: "Optimal" },
-            { Machine: "Scanner Conveyor", JobCard: "7985", Description: "Drive Motor Belt", Location: "Bay Area", Quantity: "1,00", Condition: "45.0", Comment: "Wear & Tear" },
-            { Machine: "Powerfashion Sorter Conveyor", JobCard: "N/A", Description: "Sorter Belt Unit", Location: "Sorting Zone", Quantity: "1,00", Condition: "89.0", Comment: "Normal" },
-            { Machine: "Inbound Sorter Conveyor", JobCard: "N/A", Description: "Inbound Roller Line", Location: "Receiving", Quantity: "1,00", Condition: "90.0", Comment: "Normal" },
-            { Machine: "Bay1 Inbound Conveyor", JobCard: "N/A", Description: "Bay 1 Feed Line", Location: "Bay 1", Quantity: "1,00", Condition: "15.0", Comment: "Check Roller" },
-            { Machine: "Bay2 Inbound Conveyor", JobCard: "N/A", Description: "Bay 2 Feed Line", Location: "Bay 2", Quantity: "1,00", Condition: "25.0", Comment: "Check Roller" },
-            { Machine: "Volumizer 1", JobCard: "N/A", Description: "Volumizer Unit 1", Location: "Main Floor", Quantity: "1,00", Condition: "30.0", Comment: "Operational" },
-            { Machine: "Volumizer 1 Conveyor", JobCard: "N/A", Description: "Volumizer 1 Feed Conveyor", Location: "Main Floor", Quantity: "1,00", Condition: "50.0", Comment: "Operational" },
-            { Machine: "Volumizer 1 Power Supply", JobCard: "N/A", Description: "Volumizer 1 PSU", Location: "Main Floor", Quantity: "1,00", Condition: "80.0", Comment: "Operational" },
-            { Machine: "Volumizer 2", JobCard: "N/A", Description: "Volumizer Unit 2", Location: "Main Floor", Quantity: "1,00", Condition: "20.0", Comment: "Operational" },
-            { Machine: "Volumizer 2 Conveyor", JobCard: "N/A", Description: "Volumizer 2 Feed Conveyor", Location: "Main Floor", Quantity: "1,00", Condition: "55.0", Comment: "Operational" },
-            { Machine: "Volumizer 2 Power Supply", JobCard: "N/A", Description: "Volumizer 2 PSU", Location: "Main Floor", Quantity: "1,00", Condition: "75.0", Comment: "Operational" }
-        ];
+<section id="pinGate">
+  <h2>Sign In</h2>
 
-        // 1. Setup Scene, Camera, and Renderer
-        const container = document.getElementById('webgl-container');
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0f172a);
+  <div class="field-group">
+    <label for="emailInput">Email</label>
+    <input id="emailInput" type="email" autocomplete="email" />
+  </div>
 
-        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 2000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+  <div class="field-group">
+    <label for="pinInput">PIN</label>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••" />
+  </div>
 
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 0.85;
-        container.appendChild(renderer.domElement);
+  <button id="btnUnlock" type="button">Unlock IBT Portal</button>
+  <div id="pinError"></div>
+</section>
 
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
+<main id="appView">
+  <div class="branch-bar">
+    <label for="myBranch"><strong>My Branch:</strong></label>
+    <select id="myBranch"></select>
+    <span id="signedInUser" class="user-tag"></span>
+    <button id="btnLock" class="btn-lock" type="button">Lock / Switch User</button>
+  </div>
 
-        // Smooth camera zoom state
-        let isTransitioningCamera = false;
-        const desiredCameraPos = new THREE.Vector3();
-        const desiredTargetPos = new THREE.Vector3();
+  <div class="container">
+    <div class="search-box">
+      <input id="partSearch" list="partList" placeholder="Search for an item..." />
+      <datalist id="partList"></datalist>
+    </div>
 
-        controls.addEventListener('start', () => {
-            isTransitioningCamera = false;
-        });
+    <div id="map"></div>
 
-        // 2. Balanced Lighting (prevents harsh white specular wash on the floor)
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
-        scene.add(ambientLight);
+    <div class="panel">
+      <div class="summary-card">
+        <div id="nearestText">📍 Select an item to locate nearest stock</div>
+        <div id="totalStockText">📦 Total Network Stock: 0 units</div>
+        <div id="routeText">🛣️ Select a source branch pill to preview road route</div>
+      </div>
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.55);
-        directionalLight.position.set(10, 30, 20);
-        scene.add(directionalLight);
+      <div>
+        <div style="font-size:0.85rem;font-weight:600;margin-bottom:6px;">Select Branch You Want Item From:</div>
+        <div id="branchPills" class="branch-pills"></div>
+      </div>
 
-        const backLight = new THREE.DirectionalLight(0xffffff, 0.25);
-        backLight.position.set(-10, -20, -15);
-        scene.add(backLight);
+      <div class="form-grid">
+        <input id="requesterName" placeholder="Requester Full Name *" class="full" />
+        <input id="requestQty" type="number" min="1" placeholder="Request Quantity *" />
+        <input id="jobCard" placeholder="Job Card Number *" />
+        <textarea id="comments" rows="2" placeholder="Reason or special delivery instructions... *" class="full"></textarea>
+        <div id="qtyError" class="error full"></div>
+        <button id="btnSubmit" class="submit" disabled>Submit IBT Request</button>
+      </div>
+    </div>
+  </div>
+</main>
 
-        let warehouseModel = null;
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-        let highlightedMeshes = [];
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const GET_STOCK_URL = "https://default0e23ddde1cba42eb9760e698ce0a9b.00.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/31/workflows/783eb2701d0e4d9abebdd53365a1d2d5/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=NdIeEnSrJDvDcv1rRnDqKAnTCr97V4CFz786nhr87zM";
+  const SUBMIT_IBT_URL = "https://default0e23ddde1cba42eb9760e698ce0a9b.00.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/24/workflows/baeb00842bcb48e4a06ce24cf597c62d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=Cb58LmCa9JeYcYYVQR7ZoMIHgszgByuzyjomZszUbDs";
 
-        function collapseRepeatedPhrase(text = "") {
-            const cleaned = String(text)
-                .replace(/_/g, " ")
-                .replace(/#\d+/g, "")
-                .replace(/\(\d+\)/g, "")
-                .replace(/\s+/g, " ")
-                .trim();
+  let requesterEmail = "";
+  let stockData = [];
+  let branches = {};
+  let selectedPart = "";
+  let selectedSourceBranch = null;
+  let map = null;
+  let markersLayer = null;
+  let routeLayer = null;
 
-            if (!cleaned) return "";
+  const goldPinIcon = L.divIcon({
+    className: "gold-pin-wrapper",
+    html: `
+      <svg class="gold-pin-svg" viewBox="0 0 36 48" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ffe680" />
+            <stop offset="55%" stop-color="#f5b82e" />
+            <stop offset="100%" stop-color="#b87b00" />
+          </linearGradient>
+        </defs>
+        <path d="M18 2C9.7 2 3 8.7 3 17c0 11.4 15 29 15 29s15-17.6 15-29C33 8.7 26.3 2 18 2zm0 20.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"
+              fill="url(#goldGrad)" stroke="#fff3c4" stroke-width="1.2" />
+      </svg>
+    `,
+    iconSize: [30, 40],
+    iconAnchor: [15, 40],
+    popupAnchor: [0, -36]
+  });
 
-            const halfMatch = cleaned.match(/^(.+?)\s+\1$/i);
-            if (halfMatch) {
-                return halfMatch[1].trim();
-            }
+  const pulsingRedIcon = L.divIcon({
+    className: "pulse-marker-wrapper",
+    html: `<div class="pulse-dot"></div>`,
+    iconSize: [42, 42],
+    iconAnchor: [21, 21],
+    popupAnchor: [0, -16]
+  });
 
-            const words = cleaned.split(" ");
-            if (words.length % 2 === 0) {
-                const mid = words.length / 2;
-                const firstHalf = words.slice(0, mid).join(" ");
-                const secondHalf = words.slice(mid).join(" ");
-                if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
-                    return firstHalf;
-                }
-            }
+  function getCurrentTimePin() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    return `${hh}${mm}`;
+  }
 
-            const deduped = [];
-            for (const part of words) {
-                if (deduped.length === 0 || deduped[deduped.length - 1].toLowerCase() !== part.toLowerCase()) {
-                    deduped.push(part);
-                }
-            }
+  function isValidCompanyEmail(email) {
+    return /^[^\s@]+@citylogistics\.co\.za$/i.test(email.trim());
+  }
 
-            return deduped.join(" ");
+  function initMapIfNeeded() {
+    if (!map) {
+      map = L.map('map').setView([-26.18, 28.22], 10);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+      }).addTo(map);
+      markersLayer = L.layerGroup().addTo(map);
+      routeLayer = L.layerGroup().addTo(map);
+    }
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371, toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+    return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
+  }
+
+  function formatDuration(seconds) {
+    const totalMins = Math.max(1, Math.round(seconds / 60));
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return hrs > 0 ? `${hrs}h ${mins}m` : `${totalMins} min`;
+  }
+
+  function addGlowingRoute(latLngs, dashed = false) {
+    if (!dashed) {
+      L.polyline(latLngs, {
+        color: "#00c8ff",
+        weight: 12,
+        opacity: 0.22
+      }).addTo(routeLayer);
+
+      L.polyline(latLngs, {
+        color: "#22d3ee",
+        weight: 7,
+        opacity: 0.45
+      }).addTo(routeLayer);
+    }
+
+    return L.polyline(latLngs, {
+      color: "#99f3ff",
+      weight: dashed ? 3.5 : 3.2,
+      opacity: 1,
+      dashArray: dashed ? "6, 8" : null
+    }).addTo(routeLayer);
+  }
+
+  async function drawRouteToBranch(home, item) {
+    if (!routeLayer) return;
+    routeLayer.clearLayers();
+    const routeEl = document.getElementById("routeText");
+    const myCode = document.getElementById("myBranch").value;
+
+    if (!home || !item) {
+      routeEl.textContent = "🛣️ Select a source branch pill to preview road route";
+      return;
+    }
+
+    const fromLat = Number(item.Latitude), fromLon = Number(item.Longitude);
+    const toLat = Number(home.lat), toLon = Number(home.lon);
+    const fallbackCoords = [[fromLat, fromLon], [toLat, toLon]];
+
+    routeEl.textContent = `🛣️ Calculating OSRM route (${item.BranchLocation} → ${myCode})...`;
+
+    try {
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson`;
+      const res = await fetch(osrmUrl);
+      const data = await res.json();
+
+      if (data.code === "Ok" && data.routes && data.routes[0]) {
+        const route = data.routes[0];
+        const latLngs = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+        const roadKm = (route.distance / 1000).toFixed(1);
+        const eta = formatDuration(route.duration);
+
+        const coreLine = addGlowingRoute(latLngs, false);
+        routeEl.textContent = `🛣️ OSRM Route (${item.BranchLocation} → ${myCode}): ${roadKm} km (~${eta})`;
+        map.fitBounds(coreLine.getBounds(), { padding: [45, 45], maxZoom: 12 });
+        return;
+      }
+    } catch (e) {
+      // Fallback to straight glowing line if OSRM request fails
+    }
+
+    const fallbackLine = addGlowingRoute(fallbackCoords, true);
+    routeEl.textContent = `🛣️ Direct line (${item.BranchLocation} → ${myCode}): ${item.dist} km (OSRM unavailable)`;
+    map.fitBounds(fallbackLine.getBounds(), { padding: [45, 45], maxZoom: 12 });
+  }
+
+  function resetSelectionKeepName() {
+    selectedPart = "";
+    selectedSourceBranch = null;
+    document.getElementById("partSearch").value = "";
+    document.getElementById("branchPills").innerHTML = "";
+    document.getElementById("nearestText").textContent = "📍 Select an item to locate nearest stock";
+    document.getElementById("totalStockText").textContent = "📦 Total Network Stock: 0 units";
+    document.getElementById("routeText").textContent = "🛣️ Select a source branch pill to preview road route";
+    document.getElementById("requestQty").value = "";
+    document.getElementById("jobCard").value = "";
+    document.getElementById("comments").value = "";
+    document.getElementById("qtyError").style.display = "none";
+    if (markersLayer) markersLayer.clearLayers();
+    if (routeLayer) routeLayer.clearLayers();
+    validateForm();
+  }
+
+  async function unlockWithPin() {
+    const email = document.getElementById("emailInput").value.trim().toLowerCase();
+    const pin = document.getElementById("pinInput").value.trim();
+    const expectedPin = getCurrentTimePin();
+    const errEl = document.getElementById("pinError");
+    const btn = document.getElementById("btnUnlock");
+
+    if (!isValidCompanyEmail(email)) {
+      errEl.textContent = "Invalid email or PIN.";
+      document.getElementById("emailInput").focus();
+      return;
+    }
+
+    if (!/^\d{4}$/.test(pin) || pin !== expectedPin) {
+      errEl.textContent = "Invalid email or PIN.";
+      document.getElementById("pinInput").focus();
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Loading Stock...";
+    errEl.textContent = "";
+
+    try {
+      const res = await fetch(GET_STOCK_URL);
+      if (!res.ok) throw new Error("Flow error");
+
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error("Empty stock response");
+      }
+
+      requesterEmail = email;
+      stockData = data;
+      branches = {};
+
+      document.getElementById("pinGate").style.display = "none";
+      document.getElementById("appView").style.display = "block";
+      document.getElementById("signedInUser").textContent = `Signed in: ${requesterEmail}`;
+      document.getElementById("statusBadge").textContent = `● Live (${stockData.length} rows)`;
+      document.getElementById("statusBadge").style.color = "#7ee787";
+
+      const parts = [...new Set(stockData.map(r => r.PartName).filter(Boolean))].sort();
+      document.getElementById("partList").innerHTML = parts.map(p => `<option value="${p}">`).join("");
+
+      stockData.forEach(r => {
+        if (r.BranchLocation && r.Latitude && r.Longitude) {
+          branches[r.BranchLocation] = { lat: Number(r.Latitude), lon: Number(r.Longitude) };
         }
+      });
 
-        function cleanInstanceName(raw = "") {
-            return collapseRepeatedPhrase(
-                String(raw).replace(/_\d+$/, "")
-            );
-        }
+      const myBranchSel = document.getElementById("myBranch");
+      myBranchSel.innerHTML = Object.keys(branches).sort().map(b => `<option value="${b}">${b}</option>`).join("");
 
-        function normalizeName(str = "") {
-            return cleanInstanceName(str).toLowerCase().replace(/[^a-z0-9]/g, "");
-        }
+      initMapIfNeeded();
+      resetSelectionKeepName();
+    } catch (e) {
+      errEl.textContent = "Unable to connect.";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Unlock IBT Portal";
+    }
+  }
 
-        function getAncestorChain(obj) {
-            const chain = [];
-            let curr = obj;
-            while (curr && curr !== scene) {
-                if (curr.name && curr.name.trim() !== "") {
-                    chain.push(curr.name.trim());
-                }
-                curr = curr.parent;
-            }
-            return chain;
-        }
+  function renderSelection() {
+    selectedPart = document.getElementById("partSearch").value.trim();
+    selectedSourceBranch = null;
+    markersLayer.clearLayers();
+    if (routeLayer) routeLayer.clearLayers();
+    document.getElementById("routeText").textContent = "🛣️ Select a source branch pill to preview road route";
 
-        function getMatchScore(obj, targetKey) {
-            const chain = getAncestorChain(obj);
-            let bestScore = 0;
+    const myCode = document.getElementById("myBranch").value;
+    const home = branches[myCode];
+    if (home) {
+      L.marker([home.lat, home.lon], { icon: pulsingRedIcon, zIndexOffset: 500 })
+        .bindPopup(`<b>${myCode} (My Branch)</b>`).addTo(markersLayer);
+    }
 
-            for (const rawName of chain) {
-                const norm = normalizeName(rawName);
-                if (!norm) continue;
+    const matches = stockData
+      .filter(r => r.PartName === selectedPart && Number(r.QtyInStock) > 0)
+      .map(r => ({
+        ...r,
+        dist: home ? haversineKm(home.lat, home.lon, Number(r.Latitude), Number(r.Longitude)) : 0
+      }))
+      .sort((a, b) => a.dist - b.dist);
 
-                if (norm === targetKey) {
-                    return 3;
-                }
-                const escapedTarget = targetKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                if (new RegExp("^" + escapedTarget + "\\d+$").test(norm) && bestScore < 2) {
-                    bestScore = 2;
-                }
-            }
+    const totalUnits = matches.reduce((sum, r) => sum + Number(r.QtyInStock), 0);
+    document.getElementById("totalStockText").textContent = `📦 Total Network Stock: ${totalUnits} units`;
+    document.getElementById("nearestText").textContent = matches.length
+      ? `📍 Nearest Stock: ${matches[0].BranchLocation} | ${matches[0].dist} km away (Stock: ${matches[0].QtyInStock})`
+      : "📍 No branch stock available for this item";
 
-            return bestScore;
-        }
+    const pillsDiv = document.getElementById("branchPills");
+    pillsDiv.innerHTML = "";
+    const bounds = home ? [[home.lat, home.lon]] : [];
 
-        function clearHighlights() {
-            highlightedMeshes.forEach(({ mesh, originalMaterial }) => {
-                if (mesh.material && mesh.material !== originalMaterial) {
-                    if (Array.isArray(mesh.material)) {
-                        mesh.material.forEach((m) => m.dispose());
-                    } else {
-                        mesh.material.dispose();
-                    }
-                }
-                mesh.material = originalMaterial;
-            });
-            highlightedMeshes = [];
-        }
+    matches.forEach(item => {
+      bounds.push([Number(item.Latitude), Number(item.Longitude)]);
+      L.marker([Number(item.Latitude), Number(item.Longitude)], { icon: goldPinIcon })
+        .bindPopup(`<b>${item.BranchLocation}</b> | ${item.dist} km away<br>Stock: ${item.QtyInStock} | Bin: ${item.StorageLocation || 'N/A'}`)
+        .addTo(markersLayer);
 
-        function applyEmissiveHighlight(material) {
-            const cloned = material.clone();
-            if (cloned.emissive) {
-                cloned.emissive.setHex(0x00e5ff);
-                cloned.emissiveIntensity = 0.85;
-            }
-            return cloned;
-        }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill";
+      btn.textContent = `${item.BranchLocation} (${item.QtyInStock} avail • ${item.dist} km)`;
+      btn.onclick = async () => {
+        document.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        selectedSourceBranch = item;
+        validateForm();
+        await drawRouteToBranch(home, item);
+      };
+      pillsDiv.appendChild(btn);
+    });
 
-        function zoomToBox(box, paddingFactor = 1.8) {
-            if (box.isEmpty()) return;
+    if (bounds.length) map.fitBounds(bounds, { padding: [45, 45], maxZoom: 12 });
+    validateForm();
+  }
 
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z, 1);
+  function validateForm() {
+    const qty = Number(document.getElementById("requestQty").value);
+    const name = document.getElementById("requesterName").value.trim();
+    const job = document.getElementById("jobCard").value.trim();
+    const comments = document.getElementById("comments").value.trim();
+    const errDiv = document.getElementById("qtyError");
 
-            const fov = THREE.MathUtils.degToRad(camera.fov);
-            const fitHeightDistance = maxDim / (2 * Math.tan(fov / 2));
-            const fitWidthDistance = fitHeightDistance / Math.max(camera.aspect, 0.5);
-            const distance = paddingFactor * Math.max(fitHeightDistance, fitWidthDistance);
+    if (selectedSourceBranch && qty > Number(selectedSourceBranch.QtyInStock)) {
+      errDiv.textContent = `⚠️ Requested quantity (${qty}) exceeds available stock (${selectedSourceBranch.QtyInStock})!`;
+      errDiv.style.display = "block";
+    } else {
+      errDiv.style.display = "none";
+    }
 
-            const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
-            if (dir.lengthSq() < 0.0001) {
-                dir.set(0.5, 0.6, 1);
-            }
-            dir.normalize();
+    const isValid = selectedPart && selectedSourceBranch && name && job && comments &&
+                    qty > 0 && qty <= Number(selectedSourceBranch.QtyInStock);
+    document.getElementById("btnSubmit").disabled = !isValid;
+  }
 
-            desiredTargetPos.copy(center);
-            desiredCameraPos.copy(center).addScaledVector(dir, distance);
-            isTransitioningCamera = true;
-        }
+  document.getElementById("btnSubmit").onclick = async () => {
+    const btn = document.getElementById("btnSubmit");
+    btn.disabled = true;
+    btn.textContent = "Submitting Request...";
 
-        function applyAssetFilter(rawAsset) {
-            if (!warehouseModel) return;
+    const payload = {
+      RowID: selectedSourceBranch.RowID,
+      PartName: selectedPart,
+      FromBranch: selectedSourceBranch.BranchLocation,
+      ToBranch: document.getElementById("myBranch").value,
+      QtyRequested: Number(document.getElementById("requestQty").value),
+      CurrentStock: Number(selectedSourceBranch.QtyInStock),
+      RequesterName: document.getElementById("requesterName").value.trim(),
+      RequesterEmail: requesterEmail,
+      JobCardNumber: document.getElementById("jobCard").value.trim(),
+      Comments: document.getElementById("comments").value.trim()
+    };
 
-            clearHighlights();
+    try {
+      const res = await fetch(SUBMIT_IBT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Flow rejected request");
+      alert(`✅ IBT Request submitted! ${payload.QtyRequested}x ${payload.PartName} requested from ${payload.FromBranch}.`);
+      resetSelectionKeepName();
+    } catch (e) {
+      alert("❌ Submission failed. Check SubmitIBT_Web flow and Response headers.");
+      validateForm();
+    } finally {
+      btn.textContent = "Submit IBT Request";
+    }
+  };
 
-            const decodedAsset = decodeURIComponent(rawAsset || "").trim();
-            if (!decodedAsset || decodedAsset.toUpperCase() === "ALL") {
-                return;
-            }
+  document.getElementById("btnUnlock").addEventListener("click", unlockWithPin);
+  ["emailInput", "pinInput"].forEach(id => {
+    document.getElementById(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") unlockWithPin();
+    });
+  });
+  document.getElementById("btnLock").addEventListener("click", () => {
+    requesterEmail = "";
+    document.getElementById("pinInput").value = "";
+    document.getElementById("pinError").textContent = "";
+    document.getElementById("appView").style.display = "none";
+    document.getElementById("pinGate").style.display = "block";
+    document.getElementById("statusBadge").textContent = "Verification Required";
+    document.getElementById("statusBadge").style.color = "#ffd27d";
+  });
 
-            const targetKey = normalizeName(decodedAsset);
-            if (!targetKey) return;
-
-            const exactMatches = [];
-            const numberedInstanceMatches = [];
-
-            warehouseModel.traverse((child) => {
-                if (!child.isMesh) return;
-                const score = getMatchScore(child, targetKey);
-                if (score === 3) exactMatches.push(child);
-                else if (score === 2) numberedInstanceMatches.push(child);
-            });
-
-            const matchedObjects = exactMatches.length > 0 ? exactMatches : numberedInstanceMatches;
-
-            if (matchedObjects.length > 0) {
-                const focusBox = new THREE.Box3();
-
-                matchedObjects.forEach((mesh) => {
-                    const originalMaterial = mesh.material;
-                    mesh.material = Array.isArray(originalMaterial)
-                        ? originalMaterial.map(applyEmissiveHighlight)
-                        : applyEmissiveHighlight(originalMaterial);
-
-                    highlightedMeshes.push({ mesh, originalMaterial });
-                    focusBox.expandByObject(mesh);
-                });
-
-                zoomToBox(focusBox, 1.8);
-                console.log(`Highlighted & zooming to ${matchedObjects.length} mesh(es) for asset:`, decodedAsset);
-            } else {
-                const availableNames = [];
-                warehouseModel.traverse((node) => {
-                    if (node.name && node.name.trim() !== "") {
-                        availableNames.push(cleanInstanceName(node.name));
-                    }
-                });
-                console.warn("No exact/instance 3D match found for:", decodedAsset);
-                console.log("Available cleaned node names:", [...new Set(availableNames)].slice(0, 60));
-            }
-        }
-
-        // 3. Load the GLB File and soften floor specular reflections
-        const loader = new THREE.GLTFLoader();
-        loader.load(
-            'Warehouse-optimized.glb',
-            function (gltf) {
-                warehouseModel = gltf.scene;
-
-                warehouseModel.traverse((child) => {
-                    if (child.isMesh && child.material) {
-                        const mats = Array.isArray(child.material) ? child.material : [child.material];
-                        mats.forEach((mat) => {
-                            const nameLower = (child.name || "").toLowerCase();
-                            if (nameLower.includes("floor") || nameLower.includes("slab") || nameLower.includes("ground")) {
-                                if ("roughness" in mat) mat.roughness = Math.max(mat.roughness ?? 0.8, 0.9);
-                                if ("metalness" in mat) mat.metalness = 0.0;
-                            }
-                        });
-                    }
-                });
-
-                scene.add(warehouseModel);
-
-                const box = new THREE.Box3().setFromObject(warehouseModel);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-
-                const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(center.x, center.y + maxDim * 0.35, center.z + maxDim * 0.72);
-                controls.target.copy(center);
-                controls.update();
-
-                const params = new URLSearchParams(window.location.search);
-                const initialAsset = params.get("asset");
-                if (initialAsset) {
-                    applyAssetFilter(initialAsset);
-                }
-            },
-            undefined,
-            function (error) {
-                console.log('Error loading GLB:', error);
-            }
-        );
-
-        // 4. Click Interaction with Deep Ancestor Chain Scanning & Exact-First Matching
-        window.addEventListener('click', onPointerDown, false);
-
-        function onPointerDown(event) {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-            raycaster.setFromCamera(mouse, camera);
-            if (!warehouseModel) return;
-
-            const intersects = raycaster.intersectObjects(warehouseModel.children, true);
-
-            if (intersects.length > 0) {
-                const hitObject = intersects[0].object;
-                const namesInChain = getAncestorChain(hitObject);
-
-                console.log("=== Clicked Node Chain ===", namesInChain);
-
-                let matchedRecord = null;
-                let resolvedName = "Unknown Asset";
-
-                for (const name of namesInChain) {
-                    const cleanNorm = normalizeName(name);
-                    matchedRecord = warehouseData.find((d) => normalizeName(d.Machine) === cleanNorm);
-                    if (matchedRecord) {
-                        resolvedName = matchedRecord.Machine;
-                        break;
-                    }
-                }
-
-                if (!matchedRecord) {
-                    for (const name of namesInChain) {
-                        const cleanedLower = cleanInstanceName(name).toLowerCase();
-                        if (!cleanedLower) continue;
-                        matchedRecord = warehouseData.find((d) => {
-                            const machineLower = d.Machine.toLowerCase();
-                            return cleanedLower === machineLower ||
-                                   cleanedLower.includes(machineLower) ||
-                                   machineLower.includes(cleanedLower);
-                        });
-                        if (matchedRecord) {
-                            resolvedName = matchedRecord.Machine;
-                            break;
-                        }
-                    }
-                }
-
-                if (!matchedRecord) {
-                    const fallbackName = [...namesInChain]
-                        .map((n) => cleanInstanceName(n))
-                        .reverse()
-                        .find((n) =>
-                            n &&
-                            !n.toLowerCase().startsWith("assembly") &&
-                            !n.toLowerCase().startsWith("geom") &&
-                            !n.toLowerCase().startsWith("group") &&
-                            !n.toLowerCase().startsWith("untitled") &&
-                            !n.toLowerCase().startsWith("mesh") &&
-                            !n.toLowerCase().includes("sketchupdwg")
-                        ) || cleanInstanceName(namesInChain[0]) || "Standard Asset";
-
-                    resolvedName = fallbackName;
-                }
-
-                console.log("Resolved Machine Name for Power BI Link:", resolvedName);
-            }
-        }
-
-        // Handle window resizing
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        // 5. Animation Loop with Smooth Camera Zoom Interpolation
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (isTransitioningCamera) {
-                camera.position.lerp(desiredCameraPos, 0.08);
-                controls.target.lerp(desiredTargetPos, 0.08);
-
-                if (
-                    camera.position.distanceTo(desiredCameraPos) < 0.05 &&
-                    controls.target.distanceTo(desiredTargetPos) < 0.05
-                ) {
-                    camera.position.copy(desiredCameraPos);
-                    controls.target.copy(desiredTargetPos);
-                    isTransitioningCamera = false;
-                }
-            }
-
-            controls.update();
-            renderer.render(scene, camera);
-        }
-        animate();
-    </script>
+  ["partSearch", "myBranch"].forEach(id => document.getElementById(id).addEventListener("change", renderSelection));
+  ["requesterName", "requestQty", "jobCard", "comments"].forEach(id => document.getElementById(id).addEventListener("input", validateForm));
+</script>
 </body>
 </html>
