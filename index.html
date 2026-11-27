@@ -530,7 +530,7 @@
         document.getElementById("kpiRoutePath").textContent = `${item.BranchLocation} → ${myCode}`;
         document.getElementById("kpiRouteKm").textContent = `${roadKm} KM`;
         document.getElementById("kpiEta").textContent = eta;
-        document.getElementById("kpiEtaMode").textContent = "OSRM road";
+        document.getElementById("kpiEtaMode").textContent = "Spare Arrival Time";
         map.fitBounds(coreLine.getBounds(), { padding: [45, 45], maxZoom: 12 });
         return;
       }
